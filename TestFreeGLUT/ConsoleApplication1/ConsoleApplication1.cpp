@@ -7,15 +7,15 @@
 #include "FileReader.h"
 
 void onDisplay();
-int initResources(void);
+bool initResources(void);
 void freeResources();
 void printLog(GLuint object);
 GLuint createShader(const char* filename, GLenum type);
 void enableOpenGLTransparency();
 
 GLuint program;
-GLint attribute_coord2d;
-GLuint vbo_triangle;
+GLuint vbo_triangle, vbo_triangle_colors;
+GLint attribute_coord2d, attribute_v_color;
 
 int main(int argc, char* argv[])
 {
@@ -31,7 +31,7 @@ int main(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
-	if (1 == initResources())
+	if (initResources())
 	{
 		glutDisplayFunc(onDisplay);
 		enableOpenGLTransparency();
@@ -68,17 +68,29 @@ void onDisplay()
 		GL_FALSE,          // take our values as-is
 		0,                 // no extra data between each position
 		0                  // offset of first element
-		);
+	);
+
+	glEnableVertexAttribArray(attribute_v_color);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_triangle_colors);
+	glVertexAttribPointer(
+		attribute_v_color, // attribute
+		3,                 // number of elements per vertex, here (r,g,b)
+		GL_FLOAT,          // the type of each element
+		GL_FALSE,          // take our values as-is
+		0,                 // no extra data between each position
+		0                  // offset of first element
+	);
 
 	/* Push each element in buffer_vertices to the vertex shader */
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 	glDisableVertexAttribArray(attribute_coord2d);
+	glDisableVertexAttribArray(attribute_v_color);
 
 	/* Display the result */
 	glutSwapBuffers();
 }
 
-int initResources(void)
+bool initResources(void)
 {
 	GLint compile_ok = GL_FALSE, link_ok = GL_FALSE;
 
@@ -88,13 +100,13 @@ int initResources(void)
 	GLuint vs = createShader("triangle.vs.glsl", GL_VERTEX_SHADER);
 	if (vs == 0)
 	{
-		return 0;
+		return false;
 	}
 
 	GLuint fs = createShader("triangle.fs.glsl", GL_FRAGMENT_SHADER);
 	if (fs == 0) 
 	{
-		return 0;
+		return false;
 	}
 
 	program = glCreateProgram();
@@ -105,14 +117,14 @@ int initResources(void)
 	if (!link_ok) {
 		fprintf(stderr, "glLinkProgram:");
 		printLog(program);
-		return 0;
+		return false;
 	}
 
 	const char* attribute_name = "coord2d";
 	attribute_coord2d = glGetAttribLocation(program, attribute_name);
 	if (attribute_coord2d == -1) {
 		fprintf(stderr, "Could not bind attribute %s\n", attribute_name);
-		return 0;
+		return false;
 	}
 
 	glGenBuffers(1, &vbo_triangle);
@@ -124,7 +136,23 @@ int initResources(void)
 	};
 	glBufferData(GL_ARRAY_BUFFER, sizeof(triangle_vertices), triangle_vertices, GL_STATIC_DRAW);
 
-	return 1;
+	GLfloat triangle_colors[] = {
+		1.0, 1.0, 0.0,
+		0.0, 0.0, 1.0,
+		1.0, 0.0, 0.0,
+	};
+	glGenBuffers(1, &vbo_triangle_colors);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_triangle_colors);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(triangle_colors), triangle_colors, GL_STATIC_DRAW);
+
+	attribute_name = "v_color";
+	attribute_v_color = glGetAttribLocation(program, attribute_name);
+	if (attribute_v_color == -1) {
+		fprintf(stderr, "Could not bind attribute %s\n", attribute_name);
+		return 0;
+	}
+
+	return true;
 }
 
 void freeResources()
