@@ -12,6 +12,9 @@ void freeResources();
 void printLog(GLuint object);
 GLuint createShader(const char* filename, GLenum type);
 void enableOpenGLTransparency();
+bool createShaderProgram();
+bool registerShaderAttributes();
+void createTriangleAttributes();
 
 GLuint program;
 GLuint vbo_triangle, vbo_triangle_colors;
@@ -36,7 +39,8 @@ int main(int argc, char* argv[])
 		return EXIT_FAILURE;
 	}
 
-	if (initResources())
+	bool successfullyInitializedResources = initResources();
+	if (successfullyInitializedResources)
 	{
 		glutDisplayFunc(onDisplay);
 		enableOpenGLTransparency();
@@ -45,6 +49,7 @@ int main(int argc, char* argv[])
 	freeResources();
 
 	std::string input = "";
+	std::cout << "Terminating..." << std::endl;
 	std::cin >> input;
 
 	return 0;
@@ -94,11 +99,26 @@ void onDisplay()
 
 bool initResources(void)
 {
-	GLint compile_ok = GL_FALSE, link_ok = GL_FALSE;
-
 	const char* version = (const char*)glGetString(GL_VERSION);
 	std::cout << version << std::endl;
 
+	if (!createShaderProgram())
+	{
+		return false;
+	}
+
+	if (!registerShaderAttributes())
+	{
+		return false;
+	}
+
+	createTriangleAttributes();
+
+	return true;
+}
+
+bool createShaderProgram()
+{
 	GLuint vs = createShader("triangle.vs.glsl", GL_VERTEX_SHADER);
 	if (vs == 0)
 	{
@@ -115,6 +135,8 @@ bool initResources(void)
 	glAttachShader(program, vs);
 	glAttachShader(program, fs);
 	glLinkProgram(program);
+
+	GLint link_ok = GL_FALSE;
 	glGetProgramiv(program, GL_LINK_STATUS, &link_ok);
 	if (!link_ok) {
 		fprintf(stderr, "glLinkProgram:");
@@ -122,6 +144,11 @@ bool initResources(void)
 		return false;
 	}
 
+	return true;
+}
+
+bool registerShaderAttributes() 
+{
 	const char* attribute_name = "coord2d";
 	attribute_coord2d = glGetAttribLocation(program, attribute_name);
 	if (attribute_coord2d == -1) {
@@ -133,9 +160,14 @@ bool initResources(void)
 	attribute_v_color = glGetAttribLocation(program, attribute_name);
 	if (attribute_v_color == -1) {
 		fprintf(stderr, "Could not bind attribute %s\n", attribute_name);
-		return 0;
+		return false;
 	}
 
+	return true;
+}
+
+void createTriangleAttributes()
+{
 	struct attributes triangle_attributes[] = {
 		{{ 0.0,  0.8}, {1.0, 1.0, 0.0}},
 		{{-0.8, -0.8}, {0.0, 0.0, 1.0}},
@@ -144,8 +176,6 @@ bool initResources(void)
 	glGenBuffers(1, &vbo_triangle);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo_triangle);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(triangle_attributes), triangle_attributes, GL_STATIC_DRAW);
-
-	return true;
 }
 
 void freeResources()
