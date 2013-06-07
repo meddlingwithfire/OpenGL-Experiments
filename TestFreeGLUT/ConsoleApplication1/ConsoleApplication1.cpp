@@ -11,6 +11,7 @@ int initResources(void);
 void freeResources();
 void printLog(GLuint object);
 GLuint createShader(const char* filename, GLenum type);
+void enableOpenGLTransparency();
 
 GLuint program;
 GLint attribute_coord2d;
@@ -19,7 +20,7 @@ GLuint vbo_triangle;
 int main(int argc, char* argv[])
 {
 	glutInit(&argc, argv);
-	glutInitDisplayMode(GLUT_RGBA|GLUT_DOUBLE|GLUT_DEPTH);
+	glutInitDisplayMode(GLUT_RGBA|GLUT_ALPHA|GLUT_DOUBLE|GLUT_DEPTH);
 	glutInitWindowSize(640, 480);
 	glutCreateWindow("My First Triangle");
 
@@ -33,6 +34,7 @@ int main(int argc, char* argv[])
 	if (1 == initResources())
 	{
 		glutDisplayFunc(onDisplay);
+		enableOpenGLTransparency();
 		glutMainLoop();
 	}
 	freeResources();
@@ -41,6 +43,12 @@ int main(int argc, char* argv[])
 	std::cin >> input;
 
 	return 0;
+}
+
+void enableOpenGLTransparency()
+{
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
 void onDisplay()
@@ -60,7 +68,7 @@ void onDisplay()
 		GL_FALSE,          // take our values as-is
 		0,                 // no extra data between each position
 		0                  // offset of first element
-	);
+		);
 
 	/* Push each element in buffer_vertices to the vertex shader */
 	glDrawArrays(GL_TRIANGLES, 0, 3);
