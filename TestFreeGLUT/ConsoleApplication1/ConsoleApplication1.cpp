@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <gl\glew.h>
 #include <freeglut.h>
+#include <glm\glm.hpp>
+#include <glm\gtc\matrix_transform.hpp>
+#include <glm\gtc\type_ptr.hpp>
 
 #include "FileReader.h"
 
@@ -19,11 +22,12 @@ void onIdle();
 
 GLuint program;
 GLuint vbo_triangle, vbo_triangle_colors;
-GLint attribute_coord2d, attribute_v_color;
+GLint attribute_coord3d, attribute_v_color;
 GLint uniform_fade;
+GLint uniform_m_transform;
 
 struct attributes {
-	GLfloat coord2d[2];
+	GLfloat coord2d[3];
 	GLfloat v_color[3];
 };
 
@@ -60,9 +64,16 @@ int main(int argc, char* argv[])
 
 void onIdle()
 {
+	float move = 0;//sinf(glutGet(GLUT_ELAPSED_TIME) / 1000.0 * (2*3.14) / 5); // -1<->+1 every 5 seconds
+	float angle = glutGet(GLUT_ELAPSED_TIME) / 1000.0 * 45;  // 45° per second
+	glm::vec3 axis_z(0, 0, 1);
+	glm::mat4 m_transform = glm::translate(glm::mat4(1.0f), glm::vec3(move, 0.0, 0.0)) * glm::rotate(glm::mat4(1.0f), angle, axis_z);
+	glUniformMatrix4fv(uniform_m_transform, 1, GL_FALSE, glm::value_ptr(m_transform));
+
 	float cur_fade = sinf(glutGet(GLUT_ELAPSED_TIME) / 1000.0 * (2*3.1459) / 5) / 2 + 0.5; // 0->1->0 every 5 seconds
-	glUseProgram(program);
 	glUniform1f(uniform_fade, cur_fade);
+
+	glUseProgram(program);
 	glutPostRedisplay();
 }
 
@@ -80,15 +91,15 @@ void onDisplay()
 
 	glUseProgram(program);
 
-	glEnableVertexAttribArray(attribute_coord2d);
+	glEnableVertexAttribArray(attribute_coord3d);
 	glEnableVertexAttribArray(attribute_v_color);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo_triangle);
 	glVertexAttribPointer(
-		attribute_coord2d,   // attribute
-		2,                   // number of elements per vertex, here (x,y)
+		attribute_coord3d,   // attribute
+		3,                   // number of elements per vertex, here (x,y,z)
 		GL_FLOAT,            // the type of each element
 		GL_FALSE,            // take our values as-is
-		sizeof(struct attributes),  // next coord2d appears every 5 floats
+		sizeof(struct attributes),  // next coord3d appears every 6 floats
 		0                    // offset of first element
 		);
 	glVertexAttribPointer(
@@ -104,7 +115,7 @@ void onDisplay()
 	/* Push each element in buffer_vertices to the vertex shader */
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 
-	glDisableVertexAttribArray(attribute_coord2d);
+	glDisableVertexAttribArray(attribute_coord3d);
 	glDisableVertexAttribArray(attribute_v_color);
 	glutSwapBuffers();
 }
@@ -161,11 +172,11 @@ bool createShaderProgram()
 
 bool registerShaderAttributes() 
 {
-	const char* attribute_name = "coord2d";
-	attribute_coord2d = glGetAttribLocation(program, attribute_name);
-	if (attribute_coord2d == -1) {
+	const char* attribute_name = "coord3d";
+	attribute_coord3d = glGetAttribLocation(program, attribute_name);
+	if (attribute_coord3d == -1) {
 		fprintf(stderr, "Could not bind attribute %s\n", attribute_name);
-		return false;
+		return 0;
 	}
 
 	attribute_name = "v_color";
@@ -182,15 +193,22 @@ bool registerShaderAttributes()
 		return false;
 	}
 
+	uniform_name = "m_transform";
+	uniform_m_transform = glGetUniformLocation(program, uniform_name);
+	if (uniform_m_transform == -1) {
+		fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
+		return 0;
+	}
+
 	return true;
 }
 
 void createTriangleAttributes()
 {
 	struct attributes triangle_attributes[] = {
-		{{ 0.0,  0.8}, {1.0, 1.0, 0.0}},
-		{{-0.8, -0.8}, {0.0, 0.0, 1.0}},
-		{{ 0.8, -0.8}, {1.0, 0.0, 0.0}}
+		{{ 0.0,  0.8, 0.0}, {1.0, 1.0, 0.0}},
+		{{-0.8, -0.8, 0.0}, {0.0, 0.0, 1.0}},
+		{{ 0.8, -0.8, 0.0}, {1.0, 0.0, 0.0}}
 	};
 	glGenBuffers(1, &vbo_triangle);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo_triangle);
