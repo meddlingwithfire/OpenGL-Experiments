@@ -4,9 +4,13 @@
 #include <gl\glew.h>
 #include <freeglut.h>
 
+#include "FileReader.h"
+
 void onDisplay();
 int initResources(void);
 void freeResources();
+void printLog(GLuint object);
+GLuint createShader(const char* filename, GLenum type);
 
 GLuint program;
 GLint attribute_coord2d;
@@ -32,38 +36,41 @@ int main(int argc, char* argv[])
 	}
 	freeResources();
 
+	std::string input = "";
+	std::cin >> input;
+
 	return 0;
 }
 
 void onDisplay()
 {
-  /* Clear the background as white */
-  glClearColor(1.0, 1.0, 1.0, 1.0);
-  glClear(GL_COLOR_BUFFER_BIT);
- 
-  glUseProgram(program);
-  glEnableVertexAttribArray(attribute_coord2d);
-  GLfloat triangle_vertices[] = {
-     0.0,  0.8,
-    -0.8, -0.8,
-     0.8, -0.8,
-  };
-  /* Describe our vertices array to OpenGL (it can't guess its format automatically) */
-  glVertexAttribPointer(
-    attribute_coord2d, // attribute
-    2,                 // number of elements per vertex, here (x,y)
-    GL_FLOAT,          // the type of each element
-    GL_FALSE,          // take our values as-is
-    0,                 // no extra data between each position
-    triangle_vertices  // pointer to the C array
-  );
- 
-  /* Push each element in buffer_vertices to the vertex shader */
-  glDrawArrays(GL_TRIANGLES, 0, 3);
-  glDisableVertexAttribArray(attribute_coord2d);
- 
-  /* Display the result */
-  glutSwapBuffers();
+	/* Clear the background as white */
+	glClearColor(1.0, 1.0, 1.0, 1.0);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	glUseProgram(program);
+	glEnableVertexAttribArray(attribute_coord2d);
+	GLfloat triangle_vertices[] = {
+		0.0,  0.8,
+		-0.8, -0.8,
+		0.8, -0.8,
+	};
+	/* Describe our vertices array to OpenGL (it can't guess its format automatically) */
+	glVertexAttribPointer(
+		attribute_coord2d, // attribute
+		2,                 // number of elements per vertex, here (x,y)
+		GL_FLOAT,          // the type of each element
+		GL_FALSE,          // take our values as-is
+		0,                 // no extra data between each position
+		triangle_vertices  // pointer to the C array
+		);
+
+	/* Push each element in buffer_vertices to the vertex shader */
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glDisableVertexAttribArray(attribute_coord2d);
+
+	/* Display the result */
+	glutSwapBuffers();
 }
 
 int initResources(void)
@@ -73,39 +80,15 @@ int initResources(void)
 	const char* version = (const char*)glGetString(GL_VERSION);
 	std::cout << version << std::endl;
 
-	GLuint vs = glCreateShader(GL_VERTEX_SHADER);
-	const char *vs_source = 
-	"#version 120\n"
-	"attribute vec2 coord2d;\n"
-	"void main(void) {\n"
-	"	gl_Position = vec4(coord2d, 0.0, 1.0);\n"
-	"}";
-	glShaderSource(vs, 1, &vs_source, NULL);
-	glCompileShader(vs);
-	glGetShaderiv(vs, GL_COMPILE_STATUS, &compile_ok);
-
-	if (0 == compile_ok)
+	GLuint vs = createShader("triangle.vs.glsl", GL_VERTEX_SHADER);
+	if (vs == 0)
 	{
-		fprintf(stderr, "Error in vertex shader\n");
 		return 0;
 	}
 
-	GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-	const char *fs_source =
-		"#version 120\n"
-		"void main(void) {\n"
-		"	gl_FragColor[0] = gl_FragCoord.x/640.0;\n"
-		"	gl_FragColor[1] = gl_FragCoord.y/480.0;\n"
-		"	gl_FragColor[2] = 0.5;\n"
-		/*"	gl_FragColor[0] = 0.0;\n"
-		"	gl_FragColor[1] = 0.0;\n"
-		"	gl_FragColor[2] = 1.0;\n"*/
-		"}";
-	glShaderSource(fs, 1, &fs_source, NULL);
-	glCompileShader(fs);
-	glGetShaderiv(fs, GL_COMPILE_STATUS, &compile_ok);
-	if (!compile_ok) {
-		fprintf(stderr, "Error in fragment shader\n");
+	GLuint fs = createShader("triangle.fs.glsl", GL_FRAGMENT_SHADER);
+	if (fs == 0) 
+	{
 		return 0;
 	}
 
@@ -125,11 +108,72 @@ int initResources(void)
 		fprintf(stderr, "Could not bind attribute %s\n", attribute_name);
 		return 0;
 	}
- 
+
 	return 1;
 }
 
 void freeResources()
 {
 	glDeleteProgram(program);
+}
+
+GLuint createShader(const char* filename, GLenum type)
+{
+	meddlingwithfire::FileReader* fileReader = new meddlingwithfire::FileReader();
+	const GLchar* source = fileReader->readAllText(filename);
+	delete fileReader;
+
+	if (source == NULL) {
+		fprintf(stderr, "Error opening %s: ", filename); perror("");
+		return 0;
+	}
+	GLuint res = glCreateShader(type);
+	const GLchar* sources[1] = { source };
+	int size = sizeof(sources);
+	glShaderSource(res, 1, sources, NULL);
+	free((void*)source);
+
+	glCompileShader(res);
+	GLint compile_ok = GL_FALSE;
+	glGetShaderiv(res, GL_COMPILE_STATUS, &compile_ok);
+	if (compile_ok == GL_FALSE) {
+		fprintf(stderr, "%s:", filename);
+		printLog(res);
+		glDeleteShader(res);
+		return 0;
+	}
+
+	return res;
+}
+
+void printLog(GLuint object)
+{
+	GLint log_length = 0;
+	if (glIsShader(object))
+	{
+		glGetShaderiv(object, GL_INFO_LOG_LENGTH, &log_length);
+	}
+	else if (glIsProgram(object))
+	{
+		glGetProgramiv(object, GL_INFO_LOG_LENGTH, &log_length);
+	}
+	else 
+	{
+		fprintf(stderr, "printlog: Not a shader or a program\n");
+		return;
+	}
+
+	char* log = (char*)malloc(log_length);
+
+	if (glIsShader(object))
+	{
+		glGetShaderInfoLog(object, log_length, NULL, log);
+	}
+	else if (glIsProgram(object))
+	{
+		glGetProgramInfoLog(object, log_length, NULL, log);
+	}
+
+	fprintf(stderr, "%s", log);
+	free(log);
 }
