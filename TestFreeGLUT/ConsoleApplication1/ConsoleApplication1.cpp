@@ -19,6 +19,7 @@ void createTriangleAttributes();
 GLuint program;
 GLuint vbo_triangle, vbo_triangle_colors;
 GLint attribute_coord2d, attribute_v_color;
+GLint uniform_fade;
 
 struct attributes {
 	GLfloat coord2d[2];
@@ -68,6 +69,9 @@ void onDisplay()
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glUseProgram(program);
+
+	glUniform1f(uniform_fade, 0.1);
+
 	glEnableVertexAttribArray(attribute_coord2d);
 	glEnableVertexAttribArray(attribute_v_color);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo_triangle);
@@ -78,7 +82,7 @@ void onDisplay()
 		GL_FALSE,            // take our values as-is
 		sizeof(struct attributes),  // next coord2d appears every 5 floats
 		0                    // offset of first element
-	);
+		);
 	glVertexAttribPointer(
 		attribute_v_color,      // attribute
 		3,                      // number of elements per vertex, here (r,g,b)
@@ -87,7 +91,7 @@ void onDisplay()
 		sizeof(struct attributes),  // stride
 		//(GLvoid*) (2 * sizeof(GLfloat))     // offset of first element
 		(GLvoid*) offsetof(struct attributes, v_color)  // offset
-	);
+		);
 
 	/* Push each element in buffer_vertices to the vertex shader */
 	glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -160,6 +164,13 @@ bool registerShaderAttributes()
 	attribute_v_color = glGetAttribLocation(program, attribute_name);
 	if (attribute_v_color == -1) {
 		fprintf(stderr, "Could not bind attribute %s\n", attribute_name);
+		return false;
+	}
+
+	const char* uniform_name = "fade";
+	uniform_fade = glGetUniformLocation(program, uniform_name);
+	if (uniform_fade == -1) {
+		fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
 		return false;
 	}
 
