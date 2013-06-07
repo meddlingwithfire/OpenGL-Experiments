@@ -15,6 +15,7 @@ void enableOpenGLTransparency();
 bool createShaderProgram();
 bool registerShaderAttributes();
 void createTriangleAttributes();
+void onIdle();
 
 GLuint program;
 GLuint vbo_triangle, vbo_triangle_colors;
@@ -44,6 +45,7 @@ int main(int argc, char* argv[])
 	if (successfullyInitializedResources)
 	{
 		glutDisplayFunc(onDisplay);
+		glutIdleFunc(onIdle);
 		enableOpenGLTransparency();
 		glutMainLoop();
 	}
@@ -54,6 +56,14 @@ int main(int argc, char* argv[])
 	std::cin >> input;
 
 	return 0;
+}
+
+void onIdle()
+{
+	float cur_fade = sinf(glutGet(GLUT_ELAPSED_TIME) / 1000.0 * (2*3.1459) / 5) / 2 + 0.5; // 0->1->0 every 5 seconds
+	glUseProgram(program);
+	glUniform1f(uniform_fade, cur_fade);
+	glutPostRedisplay();
 }
 
 void enableOpenGLTransparency()
@@ -69,8 +79,6 @@ void onDisplay()
 	glClear(GL_COLOR_BUFFER_BIT);
 
 	glUseProgram(program);
-
-	glUniform1f(uniform_fade, 0.1);
 
 	glEnableVertexAttribArray(attribute_coord2d);
 	glEnableVertexAttribArray(attribute_v_color);
