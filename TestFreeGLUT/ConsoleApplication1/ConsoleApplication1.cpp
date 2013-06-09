@@ -19,23 +19,22 @@ bool createShaderProgram();
 bool registerShaderAttributes();
 void createTriangleAttributes();
 void onIdle();
+void onResize(int width, int height);
+
+int screen_width=800, screen_height=600;
 
 GLuint program;
-GLuint vbo_triangle, vbo_triangle_colors;
-GLint attribute_coord3d, attribute_v_color;
-GLint uniform_fade;
-GLint uniform_m_transform;
 
-struct attributes {
-	GLfloat coord2d[3];
-	GLfloat v_color[3];
-};
+GLuint vbo_cube_vertices, vbo_cube_colors;
+GLuint ibo_cube_elements;
+
+GLint attribute_coord3d, attribute_v_color, uniform_mvp, uniform_fade;
 
 int main(int argc, char* argv[])
 {
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_RGBA|GLUT_ALPHA|GLUT_DOUBLE|GLUT_DEPTH);
-	glutInitWindowSize(640, 480);
+	glutInitWindowSize(screen_width, screen_height);
 	glutCreateWindow("My First Triangle");
 
 	GLenum glewStatus = glewInit();
@@ -49,8 +48,15 @@ int main(int argc, char* argv[])
 	if (successfullyInitializedResources)
 	{
 		glutDisplayFunc(onDisplay);
+		glutReshapeFunc(onResize);
 		glutIdleFunc(onIdle);
+
 		enableOpenGLTransparency();
+
+		glEnable(GL_BLEND);
+		glEnable(GL_DEPTH_TEST);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
 		glutMainLoop();
 	}
 	freeResources();
@@ -64,16 +70,22 @@ int main(int argc, char* argv[])
 
 void onIdle()
 {
-	float move = 0;//sinf(glutGet(GLUT_ELAPSED_TIME) / 1000.0 * (2*3.14) / 5); // -1<->+1 every 5 seconds
 	float angle = glutGet(GLUT_ELAPSED_TIME) / 1000.0 * 45;  // 45° per second
-	glm::vec3 axis_z(0, 0, 1);
-	glm::mat4 m_transform = glm::translate(glm::mat4(1.0f), glm::vec3(move, 0.0, 0.0)) * glm::rotate(glm::mat4(1.0f), angle, axis_z);
-	glUniformMatrix4fv(uniform_m_transform, 1, GL_FALSE, glm::value_ptr(m_transform));
+	glm::vec3 axis_y(0, 1, 0);
+	glm::mat4 anim = glm::rotate(glm::mat4(1.0f), angle, axis_y);
 
-	float cur_fade = sinf(glutGet(GLUT_ELAPSED_TIME) / 1000.0 * (2*3.1459) / 5) / 2 + 0.5; // 0->1->0 every 5 seconds
-	glUniform1f(uniform_fade, cur_fade);
+	glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(0.0, 0.0, -4.0));
+	glm::mat4 view = glm::lookAt(glm::vec3(0.0, 2.0, 0.0), glm::vec3(0.0, 0.0, -4.0), glm::vec3(0.0, 1.0, 0.0));
+	glm::mat4 projection = glm::perspective(45.0f, 1.0f*screen_width/screen_height, 0.1f, 10.0f);
+
+	glm::mat4 mvp = projection * view * model * anim;
+
+	float sine = sinf(glutGet(GLUT_ELAPSED_TIME) / 1000.0 * (2*3.14) / 5);
+	float fade = 0.75f + (sine * 0.25f);
 
 	glUseProgram(program);
+	glUniformMatrix4fv(uniform_mvp, 1, GL_FALSE, glm::value_ptr(mvp));
+	glUniform1f(uniform_fade, fade);
 	glutPostRedisplay();
 }
 
@@ -85,35 +97,37 @@ void enableOpenGLTransparency()
 
 void onDisplay()
 {
-	/* Clear the background as white */
 	glClearColor(1.0, 1.0, 1.0, 1.0);
-	glClear(GL_COLOR_BUFFER_BIT);
+	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 
 	glUseProgram(program);
-
 	glEnableVertexAttribArray(attribute_coord3d);
-	glEnableVertexAttribArray(attribute_v_color);
-	glBindBuffer(GL_ARRAY_BUFFER, vbo_triangle);
+	// Describe our vertices array to OpenGL (it can't guess its format automatically)
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_vertices);
 	glVertexAttribPointer(
-		attribute_coord3d,   // attribute
-		3,                   // number of elements per vertex, here (x,y,z)
-		GL_FLOAT,            // the type of each element
-		GL_FALSE,            // take our values as-is
-		sizeof(struct attributes),  // next coord3d appears every 6 floats
-		0                    // offset of first element
+		attribute_coord3d, // attribute
+		3,                 // number of elements per vertex, here (x,y,z)
+		GL_FLOAT,          // the type of each element
+		GL_FALSE,          // take our values as-is
+		0,                 // no extra data between each position
+		0                  // offset of first element
 		);
+
+	glEnableVertexAttribArray(attribute_v_color);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_colors);
 	glVertexAttribPointer(
-		attribute_v_color,      // attribute
-		3,                      // number of elements per vertex, here (r,g,b)
-		GL_FLOAT,               // the type of each element
-		GL_FALSE,               // take our values as-is
-		sizeof(struct attributes),  // stride
-		//(GLvoid*) (2 * sizeof(GLfloat))     // offset of first element
-		(GLvoid*) offsetof(struct attributes, v_color)  // offset
+		attribute_v_color, // attribute
+		3,                 // number of elements per vertex, here (R,G,B)
+		GL_FLOAT,          // the type of each element
+		GL_FALSE,          // take our values as-is
+		0,                 // no extra data between each position
+		0                  // offset of first element
 		);
 
 	/* Push each element in buffer_vertices to the vertex shader */
-	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
+	int size;  glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &size);
+	glDrawElements(GL_TRIANGLES, size/sizeof(GLushort), GL_UNSIGNED_SHORT, 0);
 
 	glDisableVertexAttribArray(attribute_coord3d);
 	glDisableVertexAttribArray(attribute_v_color);
@@ -186,17 +200,17 @@ bool registerShaderAttributes()
 		return false;
 	}
 
-	const char* uniform_name = "fade";
-	uniform_fade = glGetUniformLocation(program, uniform_name);
-	if (uniform_fade == -1) {
-		fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
-		return false;
+	attribute_name = "mvp";
+	uniform_mvp = glGetUniformLocation(program, attribute_name);
+	if (uniform_mvp == -1) {
+		fprintf(stderr, "Could not bind uniform %s\n", attribute_name);
+		return 0;
 	}
 
-	uniform_name = "m_transform";
-	uniform_m_transform = glGetUniformLocation(program, uniform_name);
-	if (uniform_m_transform == -1) {
-		fprintf(stderr, "Could not bind uniform %s\n", uniform_name);
+	attribute_name = "fade";
+	uniform_fade = glGetUniformLocation(program, attribute_name);
+	if (uniform_fade == -1) {
+		fprintf(stderr, "Could not bind uniform %s\n", attribute_name);
 		return 0;
 	}
 
@@ -205,20 +219,69 @@ bool registerShaderAttributes()
 
 void createTriangleAttributes()
 {
-	struct attributes triangle_attributes[] = {
-		{{ 0.0,  0.8, 0.0}, {1.0, 1.0, 0.0}},
-		{{-0.8, -0.8, 0.0}, {0.0, 0.0, 1.0}},
-		{{ 0.8, -0.8, 0.0}, {1.0, 0.0, 0.0}}
+	GLfloat cube_vertices[] = {
+		// front
+		-1.0, -1.0,  1.0,
+		1.0, -1.0,  1.0,
+		1.0,  1.0,  1.0,
+		-1.0,  1.0,  1.0,
+		// back
+		-1.0, -1.0, -1.0,
+		1.0, -1.0, -1.0,
+		1.0,  1.0, -1.0,
+		-1.0,  1.0, -1.0,
 	};
-	glGenBuffers(1, &vbo_triangle);
-	glBindBuffer(GL_ARRAY_BUFFER, vbo_triangle);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(triangle_attributes), triangle_attributes, GL_STATIC_DRAW);
+	glGenBuffers(1, &vbo_cube_vertices);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_vertices);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertices), cube_vertices, GL_STATIC_DRAW);
+
+	GLfloat cube_colors[] = {
+		// front colors
+		1.0, 0.0, 0.0,
+		0.0, 1.0, 0.0,
+		0.0, 0.0, 1.0,
+		1.0, 1.0, 1.0,
+		// back colors
+		1.0, 0.0, 0.0,
+		0.0, 1.0, 0.0,
+		0.0, 0.0, 1.0,
+		1.0, 1.0, 1.0,
+	};
+	glGenBuffers(1, &vbo_cube_colors);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_colors);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(cube_colors), cube_colors, GL_STATIC_DRAW);
+
+	GLushort cube_elements[] = {
+		// front
+		0, 1, 2,
+		2, 3, 0,
+		// top
+		1, 5, 6,
+		6, 2, 1,
+		// back
+		7, 6, 5,
+		5, 4, 7,
+		// bottom
+		4, 0, 3,
+		3, 7, 4,
+		// left
+		4, 5, 1,
+		1, 0, 4,
+		// right
+		3, 2, 6,
+		6, 7, 3,
+	};
+	glGenBuffers(1, &ibo_cube_elements);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(cube_elements), cube_elements, GL_STATIC_DRAW);
 }
 
 void freeResources()
 {
 	glDeleteProgram(program);
-	glDeleteBuffers(1, &vbo_triangle);
+	glDeleteBuffers(1, &vbo_cube_vertices);
+	glDeleteBuffers(1, &vbo_cube_colors);
+	glDeleteBuffers(1, &ibo_cube_elements);
 }
 
 GLuint createShader(const char* filename, GLenum type)
@@ -280,4 +343,10 @@ void printLog(GLuint object)
 
 	fprintf(stderr, "%s", log);
 	free(log);
+}
+
+void onResize(int width, int height) {
+	screen_width = width;
+	screen_height = height;
+	glViewport(0, 0, screen_width, screen_height);
 }
