@@ -1,3 +1,6 @@
+
+// Left off here: http://en.wikibooks.org/wiki/OpenGL_Programming/Modern_OpenGL_Tutorial_06
+
 #include "stdafx.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,6 +11,8 @@
 #include <glm\gtc\type_ptr.hpp>
 
 #include "FileReader.h"
+#include "TargaReader.h"
+#include "SOIL.h"
 
 void onDisplay();
 bool initResources(void);
@@ -20,15 +25,19 @@ bool registerShaderAttributes();
 void createTriangleAttributes();
 void onIdle();
 void onResize(int width, int height);
+void loadTexture();
 
 int screen_width=800, screen_height=600;
 
 GLuint program;
 
-GLuint vbo_cube_vertices, vbo_cube_colors;
+GLuint vbo_cube_vertices, vbo_cube_texcoords, vbo_cube_colors;
 GLuint ibo_cube_elements;
 
-GLint attribute_coord3d, attribute_v_color, uniform_mvp, uniform_fade;
+GLint attribute_coord3d, attribute_v_color, attribute_texcoord, uniform_mvp, uniform_fade;
+
+GLuint texture_id;
+GLint uniform_mytexture;
 
 int main(int argc, char* argv[])
 {
@@ -70,7 +79,7 @@ int main(int argc, char* argv[])
 
 void onIdle()
 {
-	float angle = glutGet(GLUT_ELAPSED_TIME) / 1000.0 * 45;  // 45° per second
+	float angle = glutGet(GLUT_ELAPSED_TIME) / 1000.0f * 45.0f;  // 45° per second
 	glm::vec3 axis_y(0, 1, 0);
 	glm::mat4 anim = glm::rotate(glm::mat4(1.0f), angle, axis_y);
 
@@ -80,7 +89,7 @@ void onIdle()
 
 	glm::mat4 mvp = projection * view * model * anim;
 
-	float sine = sinf(glutGet(GLUT_ELAPSED_TIME) / 1000.0 * (2*3.14) / 5);
+	float sine = sinf(glutGet(GLUT_ELAPSED_TIME) / 1000.0f * (2.0f * 3.14f) / 5.0f);
 	float fade = 0.75f + (sine * 0.25f);
 
 	glUseProgram(program);
@@ -101,6 +110,11 @@ void onDisplay()
 	glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 
 	glUseProgram(program);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, texture_id);
+	glUniform1i(uniform_mytexture, /*GL_TEXTURE*/0);
+
 	glEnableVertexAttribArray(attribute_coord3d);
 	// Describe our vertices array to OpenGL (it can't guess its format automatically)
 	glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_vertices);
@@ -111,18 +125,18 @@ void onDisplay()
 		GL_FALSE,          // take our values as-is
 		0,                 // no extra data between each position
 		0                  // offset of first element
-		);
+	);
 
-	glEnableVertexAttribArray(attribute_v_color);
-	glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_colors);
+	glEnableVertexAttribArray(attribute_texcoord);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_texcoords);
 	glVertexAttribPointer(
-		attribute_v_color, // attribute
-		3,                 // number of elements per vertex, here (R,G,B)
-		GL_FLOAT,          // the type of each element
-		GL_FALSE,          // take our values as-is
-		0,                 // no extra data between each position
-		0                  // offset of first element
-		);
+		attribute_texcoord, // attribute
+		2,                  // number of elements per vertex, here (x,y)
+		GL_FLOAT,           // the type of each element
+		GL_FALSE,           // take our values as-is
+		0,                  // no extra data between each position
+		0                   // offset of first element
+	);
 
 	/* Push each element in buffer_vertices to the vertex shader */
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
@@ -130,7 +144,7 @@ void onDisplay()
 	glDrawElements(GL_TRIANGLES, size/sizeof(GLushort), GL_UNSIGNED_SHORT, 0);
 
 	glDisableVertexAttribArray(attribute_coord3d);
-	glDisableVertexAttribArray(attribute_v_color);
+	glDisableVertexAttribArray(attribute_texcoord);
 	glutSwapBuffers();
 }
 
@@ -150,6 +164,8 @@ bool initResources(void)
 	}
 
 	createTriangleAttributes();
+
+	loadTexture();
 
 	return true;
 }
@@ -190,12 +206,12 @@ bool registerShaderAttributes()
 	attribute_coord3d = glGetAttribLocation(program, attribute_name);
 	if (attribute_coord3d == -1) {
 		fprintf(stderr, "Could not bind attribute %s\n", attribute_name);
-		return 0;
+		return false;
 	}
 
-	attribute_name = "v_color";
-	attribute_v_color = glGetAttribLocation(program, attribute_name);
-	if (attribute_v_color == -1) {
+	attribute_name = "texcoord";
+	attribute_texcoord = glGetAttribLocation(program, attribute_name);
+	if (attribute_texcoord == -1) {
 		fprintf(stderr, "Could not bind attribute %s\n", attribute_name);
 		return false;
 	}
@@ -204,14 +220,14 @@ bool registerShaderAttributes()
 	uniform_mvp = glGetUniformLocation(program, attribute_name);
 	if (uniform_mvp == -1) {
 		fprintf(stderr, "Could not bind uniform %s\n", attribute_name);
-		return 0;
+		return false;
 	}
 
-	attribute_name = "fade";
-	uniform_fade = glGetUniformLocation(program, attribute_name);
-	if (uniform_fade == -1) {
+	attribute_name = "mytexture";
+	uniform_mytexture = glGetUniformLocation(program, attribute_name);
+	if (uniform_mytexture == -1) {
 		fprintf(stderr, "Could not bind uniform %s\n", attribute_name);
-		return 0;
+		return false;
 	}
 
 	return true;
@@ -225,51 +241,70 @@ void createTriangleAttributes()
 		1.0, -1.0,  1.0,
 		1.0,  1.0,  1.0,
 		-1.0,  1.0,  1.0,
-		// back
-		-1.0, -1.0, -1.0,
-		1.0, -1.0, -1.0,
+		// top
+		-1.0,  1.0,  1.0,
+		1.0,  1.0,  1.0,
 		1.0,  1.0, -1.0,
 		-1.0,  1.0, -1.0,
+		// back
+		1.0, -1.0, -1.0,
+		-1.0, -1.0, -1.0,
+		-1.0,  1.0, -1.0,
+		1.0,  1.0, -1.0,
+		// bottom
+		-1.0, -1.0, -1.0,
+		1.0, -1.0, -1.0,
+		1.0, -1.0,  1.0,
+		-1.0, -1.0,  1.0,
+		// left
+		-1.0, -1.0, -1.0,
+		-1.0, -1.0,  1.0,
+		-1.0,  1.0,  1.0,
+		-1.0,  1.0, -1.0,
+		// right
+		1.0, -1.0,  1.0,
+		1.0, -1.0, -1.0,
+		1.0,  1.0, -1.0,
+		1.0,  1.0,  1.0
 	};
 	glGenBuffers(1, &vbo_cube_vertices);
 	glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_vertices);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(cube_vertices), cube_vertices, GL_STATIC_DRAW);
 
-	GLfloat cube_colors[] = {
-		// front colors
-		1.0, 0.0, 0.0,
-		0.0, 1.0, 0.0,
-		0.0, 0.0, 1.0,
-		1.0, 1.0, 1.0,
-		// back colors
-		1.0, 0.0, 0.0,
-		0.0, 1.0, 0.0,
-		0.0, 0.0, 1.0,
-		1.0, 1.0, 1.0,
+	GLfloat cube_texcoords[2*4*6] = {
+		// front
+		0.0, 0.0,
+		1.0, 0.0,
+		1.0, 1.0,
+		0.0, 1.0
 	};
-	glGenBuffers(1, &vbo_cube_colors);
-	glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_colors);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(cube_colors), cube_colors, GL_STATIC_DRAW);
+	for (int i = 1; i < 6; i++)
+	{
+		memcpy(&cube_texcoords[i*4*2], &cube_texcoords[0], 2*4*sizeof(GLfloat));
+	}
+	glGenBuffers(1, &vbo_cube_texcoords);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_texcoords);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(cube_texcoords), cube_texcoords, GL_STATIC_DRAW);
 
 	GLushort cube_elements[] = {
-		// front
-		0, 1, 2,
-		2, 3, 0,
-		// top
-		1, 5, 6,
-		6, 2, 1,
-		// back
-		7, 6, 5,
-		5, 4, 7,
-		// bottom
-		4, 0, 3,
-		3, 7, 4,
-		// left
-		4, 5, 1,
-		1, 0, 4,
-		// right
-		3, 2, 6,
-		6, 7, 3,
+	// front
+	0,  1,  2,
+	2,  3,  0,
+	// top
+	4,  5,  6,
+	6,  7,  4,
+	// back
+	8,  9, 10,
+	10, 11,  8,
+	// bottom
+	12, 13, 14,
+	14, 15, 12,
+	// left
+	16, 17, 18,
+	18, 19, 16,
+	// right
+	20, 21, 22,
+	22, 23, 20,
 	};
 	glGenBuffers(1, &ibo_cube_elements);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
@@ -282,6 +317,8 @@ void freeResources()
 	glDeleteBuffers(1, &vbo_cube_vertices);
 	glDeleteBuffers(1, &vbo_cube_colors);
 	glDeleteBuffers(1, &ibo_cube_elements);
+
+	glDeleteTextures(1, &texture_id);
 }
 
 GLuint createShader(const char* filename, GLenum type)
@@ -349,4 +386,31 @@ void onResize(int width, int height) {
 	screen_width = width;
 	screen_height = height;
 	glViewport(0, 0, screen_width, screen_height);
+}
+
+void loadTexture() {
+	texture_id = SOIL_load_OGL_texture
+	(
+		"OpenGL-Tutorial-Texture.png",
+		SOIL_LOAD_AUTO,
+		SOIL_CREATE_NEW_ID,
+		SOIL_FLAG_MIPMAPS | SOIL_FLAG_INVERT_Y | SOIL_FLAG_NTSC_SAFE_RGB | SOIL_FLAG_COMPRESS_TO_DXT
+	);
+	if( 0 == texture_id )
+	{
+		printf( "SOIL loading error: '%s'\n", SOIL_last_result() );
+	}
+
+	//glGenTextures(1, &texture_id);
+	//glBindTexture(GL_TEXTURE_2D, texture_id);
+	//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	//glTexImage2D(GL_TEXTURE_2D, // target
+	//		0,  // level, 0 = base, no minimap,
+	//		GL_RGB, // internalformat
+	//		256,  // width
+	//		256,  // height
+	//		0,  // border, always 0 in OpenGL ES
+	//		GL_RGB,  // format
+	//		GL_UNSIGNED_BYTE, // type
+	//		textureBits);
 }
